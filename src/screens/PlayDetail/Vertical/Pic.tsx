@@ -1,0 +1,121 @@
+import { memo, useEffect, useMemo, useRef, useCallback } from 'react'
+import { View, Animated, Easing } from 'react-native'
+import { useIsPlay, usePlayerMusicInfo } from '@/store/player/hook'
+import { useWindowSize } from '@/utils/hooks'
+import { NAV_SHEAR_NATIVE_IDS } from '@/config/constant'
+import { HEADER_HEIGHT } from './components/Header'
+import Image from '@/components/common/Image'
+import { useStatusbarHeight } from '@/store/common/hook'
+import { useSettingValue } from '@/store/setting/hook'
+import { createStyle } from '@/utils/tools'
+
+// 圆形旋转海报（唱片模式，参考C项目 souvenp/lx-netease-music-mobile）
+// 可在 设置→播放 里切换「唱片旋转海报 / 静止海报」
+export default memo(({ componentId }: { componentId: string }) => {
+  void componentId
+  const musicInfo = usePlayerMusicInfo()
+  const { width: winWidth, height: winHeight } = useWindowSize()
+  const statusBarHeight = useStatusbarHeight()
+  const isPlay = useIsPlay()
+  const isCoverSpin = useSettingValue('playDetail.isCoverSpin')
+  const spinValue = useRef(new Animated.Value(0)).current
+  const animationRef = useRef<Animated.CompositeAnimation | null>(null)
+  const isAnimating = useRef(false)
+
+  const createAnimation = useCallback((value: number) => {
+    return Animated.timing(spinValue, {
+      toValue: 1,
+      duration: 25000 * (1 - value),
+      easing: Easing.linear,
+      useNativeDriver: true,
+    })
+  }, [spinValue])
+
+  const startAnimation = useCallback(() => {
+    if (isAnimating.current || !isCoverSpin) return
+    isAnimating.current = true
+    spinValue.stopAnimation(value => {
+      animationRef.current = createAnimation(value)
+      animationRef.current.start(({ finished }) => {
+        if (finished && isAnimating.current) {
+          spinValue.setValue(0)
+          isAnimating.current = false
+          startAnimation()
+        }
+      })
+    })
+  }, [spinValue, createAnimation, isCoverSpin])
+
+  const stopAnimation = useCallback(() => {
+    if (!isAnimating.current) return
+    isAnimating.current = false
+    animationRef.current?.stop()
+    animationRef.current = null
+    spinValue.stopAnimation()
+  }, [spinValue])
+
+  useEffect(() => {
+    if (isPlay && isCoverSpin) {
+      startAnimation()
+    } else {
+      stopAnimation()
+    }
+  }, [isPlay, isCoverSpin, startAnimation, stopAnimation])
+
+  useEffect(() => {
+    stopAnimation()
+    spinValue.setValue(0)
+    if (isPlay && isCoverSpin) {
+      startAnimation()
+    }
+  }, [musicInfo.id, isCoverSpin, startAnimation, stopAnimation, spinValue])
+
+  const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  })
+
+  const imageContainerStyle = useMemo(() => {
+    const imgWidth = Math.min(winWidth * 0.85, (winHeight - statusBarHeight - HEADER_HEIGHT) * 0.5)
+    return {
+      width: imgWidth,
+      height: imgWidth,
+      borderRadius: isCoverSpin ? imgWidth / 2 : 4,
+      elevation: 3,
+      opacity: 1,
+    }
+  }, [statusBarHeight, winHeight, winWidth, isCoverSpin])
+
+  const imageStyle = useMemo(() => ({
+    width: '100%',
+    height: '100%',
+    borderRadius: imageContainerStyle.borderRadius,
+  } as any), [imageContainerStyle.borderRadius])
+
+  return (
+    <View style={styles.container}>
+      <View style={[styles.content, imageContainerStyle, { overflow: 'hidden' }]}>
+        <Animated.View style={{ width: '100%', height: '100%', transform: [{ rotate: spin }] }}>
+          <Image
+            url={musicInfo.pic}
+            nativeID={NAV_SHEAR_NATIVE_IDS.playDetail_pic}
+            style={imageStyle}
+          />
+        </Animated.View>
+      </View>
+    </View>
+  )
+})
+
+const styles = createStyle({
+  container: {
+    flexGrow: 1,
+    flexShrink: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingBottom: '3%',
+  },
+  content: {
+    backgroundColor: 'rgba(0,0,0,0)',
+  },
+})

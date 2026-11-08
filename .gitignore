@@ -1,0 +1,96 @@
+# OSX
+#
+.DS_Store
+
+# Xcode
+#
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+ios/.xcode.env.local
+
+# Android/IntelliJ
+#
+build/
+.idea
+.gradle
+local.properties
+keystore.properties
+*.iml
+*.hprof
+.cxx/
+
+# node.js
+#
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# BUCK
+buck-out/
+\.buckd/
+*.keystore
+!debug.keystore
+
+# fastlane
+#
+# It is recommended to not store the screenshots in the git repo. Instead, use fastlane to re-generate the
+# screenshots whenever they are needed.
+# For more information about the recommended setup visit:
+# https://docs.fastlane.tools/best-practices/source-control/
+
+**/fastlane/report.xml
+**/fastlane/Preview.html
+**/fastlane/screenshots
+**/fastlane/test_output
+
+# Bundle artifact
+*.jsbundle
+
+# Ruby / CocoaPods
+/ios/Pods/
+/vendor/bundle/
+
+# testing
+/coverage
+
+# 本分支新增：发布产物 / 临时文件 / 本地凭据
+*.apk
+*.log
+.tmp-*
+index.android.bundle
+/res/
+
+# 环境变量、密钥、签名文件与本机数据一律不上传（仅保留示例模板）
+.env
+.env.*
+!.env.example
+*.jks
+*.p12
+*.pem
+*.key
+*.p8
+*.mobileprovision
+google-services.json
+android/app/debug.keystore
+ios/.xcode.env
+*.db
+*.sqlite
+*.sqlite3
+
+# 上游自带的加密模块测试脚本：未被任何代码引用，内含一对硬编码示例 RSA 私钥，
+# 仅保留在本地供调试，不上传公开仓库。
+src/utils/nativeModules/cryptoTest.ts
