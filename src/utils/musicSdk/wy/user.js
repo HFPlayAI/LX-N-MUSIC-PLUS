@@ -11,6 +11,41 @@ const saveWyUidCache = async(hashedCookie, uid, vipType, profile) => {
   uidCache.set(hashedCookie, { uid, vipType, profile })
 }
 
+// 从响应头提取 Cookie 键值对。RN 的 fetch headers.map 里 set-cookie 可能是数组，
+// 多条 Set-Cookie 会被 ", " 合并，这里按 name=value 拆分并过滤掉 Path/Expires 等属性。
+// 保留全量登录相关字段（MUSIC_U / MUSIC_R_T / MUSIC_A / __csrf / os ...），
+// 供续期后回写，避免像扫码登录那样只留白名单字段。
+const KEEP_COOKIE_NAME = /^(MUSIC_U|MUSIC_R_T|MUSIC_R_TT|MUSIC_A|__csrf|os|osver|appver|channel|deviceId|NMTID)$/i
+const parseSetCookie = (headers) => {
+  const setCookie = headers?.['set-cookie'] || headers?.['Set-Cookie']
+  if (!setCookie) return {}
+  const raw = Array.isArray(setCookie) ? setCookie.join(', ') : String(setCookie)
+  const map = {}
+  raw.split(/[;,]\s*/).forEach(pair => {
+    const idx = pair.indexOf('=')
+    if (idx <= 0) return
+    const name = pair.slice(0, idx).trim()
+    const value = pair.slice(idx + 1).trim()
+    if (KEEP_COOKIE_NAME.test(name) && value && !map[name]) map[name] = value
+  })
+  return map
+}
+
+// 把新提取的 Cookie 字段合并进原字符串：同名覆盖，其余保留。
+// 这样续期换了 MUSIC_U/__csrf 后，账号原有的 os/appver/deviceId 等不会丢。
+const mergeCookieString = (oldCookie, patch) => {
+  const map = new Map()
+  String(oldCookie || '').split(';').forEach(pair => {
+    const idx = pair.indexOf('=')
+    if (idx <= 0) return
+    const name = pair.slice(0, idx).trim()
+    const value = pair.slice(idx + 1).trim()
+    if (name && value) map.set(name, value)
+  })
+  for (const [name, value] of Object.entries(patch)) map.set(name, value)
+  return Array.from(map.entries()).map(([k, v]) => `${k}=${v}`).join('; ')
+}
+
 export default {
   async getUid(cookie, retryNum = 0) {
     if (!cookie) throw new Error('Cookie is required to get UID')
@@ -712,23 +747,11 @@ export default {
         },
         form: weapi({ key, type: 1 }),
       }).promise
-      // 从响应头中提取 cookie：RN 会把多条 Set-Cookie 用 ", " 合并成一个字符串，
-      // 这里提取所有 name=value 对并过滤掉 Path/Expires/Domain 等属性
-      let cookies = null
-      const setCookie = headers?.['set-cookie'] || headers?.['Set-Cookie']
-      if (setCookie) {
-        const raw = Array.isArray(setCookie) ? setCookie.join(', ') : String(setCookie)
-        const keep = /^(MUSIC_U|MUSIC_A|__csrf|os|osver|appver|channel|deviceId)$/i
-        const map = new Map()
-        raw.split(/[;,]\s*/).forEach(pair => {
-          const idx = pair.indexOf('=')
-          if (idx <= 0) return
-          const name = pair.slice(0, idx).trim()
-          const value = pair.slice(idx + 1).trim()
-          if (keep.test(name) && value && !map.has(name)) map.set(name, value)
-        })
-        if (map.size) cookies = Array.from(map.entries()).map(([k, v]) => `${k}=${v}`).join('; ')
-      }
+      // 从响应头中提取 cookie（复用续期用的通用解析）
+      const cookieMap = parseSetCookie(headers)
+      const cookies = Object.keys(cookieMap).length
+        ? Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ')
+        : null
       return {
         code: statusCode === 200 && body.code === 803 ? 803 : body.code,
         message: body.message || '',
@@ -739,6 +762,53 @@ export default {
       if (retryNum < maxRetries) {
         await new Promise(resolve => setTimeout(resolve, retryDelay))
         return this.checkQr(key, retryNum + 1)
+      }
+      throw error
+    }
+  },
+
+  /**
+   * 续期：用当前仍有效的 MUSIC_U 调 token/refresh 换取新的登录凭证。
+   * 必须在旧凭证过期前调用（服务端用当前凭证校验，过期则无法续期）。
+   * 响应体可能为空，新凭证在 Set-Cookie 里；提取后与原 Cookie 合并回写。
+   * 返回 { cookie, changed } —— changed 表示 MUSIC_U 是否真的变了。
+   */
+  async refreshToken(cookie, retryNum = 0) {
+    const maxRetries = 2
+    const retryDelay = 300
+    if (!cookie) throw new Error('Cookie is required to refresh token')
+    try {
+      const { body, statusCode, headers } = await httpFetch('https://music.163.com/weapi/login/token/refresh', {
+        method: 'post',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+          origin: 'https://music.163.com',
+          Referer: 'https://music.163.com',
+          cookie,
+        },
+        form: weapi({}),
+      }).promise
+
+      if (statusCode !== 200) throw new Error(`续期请求失败(HTTP ${statusCode})`)
+      // body 可能为空字符串或 { code: 200 }，也可能返回业务错误码
+      if (body && typeof body === 'object' && body.code && body.code !== 200) {
+        // 301 / -462 等视为登录态失效，交给上层触发重新登录
+        throw new Error(`续期失败(服务端code ${body.code})`)
+      }
+
+      const patch = parseSetCookie(headers)
+      const newMusicU = patch.MUSIC_U
+      if (!newMusicU) throw new Error('续期响应未返回新 MUSIC_U（凭证可能已过期，需重新登录）')
+
+      const oldMusicU = (cookie.match(/MUSIC_U=([^;]+)/) || [])[1]
+      const mergedCookie = mergeCookieString(cookie, patch)
+      // 清掉 uid 缓存，避免续期后仍命中旧的 profile
+      if (oldMusicU && oldMusicU !== newMusicU) uidCache.delete(toMD5(cookie))
+      return { cookie: mergedCookie, changed: oldMusicU !== newMusicU }
+    } catch (error) {
+      if (retryNum < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, retryDelay))
+        return this.refreshToken(cookie, retryNum + 1)
       }
       throw error
     }

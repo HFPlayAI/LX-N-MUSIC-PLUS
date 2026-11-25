@@ -20,6 +20,7 @@ import {
   createQrSession,
   pollQrStatus,
   stopQrSession,
+  refreshNow,
   type QrLoginSession,
   type QrLoginStatus,
 } from '@/store/user/service'
@@ -372,6 +373,47 @@ const CookieInput = ({ presetCookie }: {
   )
 }
 
+const AutoRefreshSection = () => {
+  const theme = useTheme()
+  const autoRefresh = useSettingValue('common.wy_auto_refresh')
+  const cookieAt = useSettingValue('common.wy_cookie_at')
+  const { wy_profile } = useWyUserState()
+  const [busy, setBusy] = useState(false)
+
+  const handleToggle = (value: boolean) => {
+    updateSetting({ 'common.wy_auto_refresh': value })
+  }
+  const handleRefreshNow = async() => {
+    setBusy(true)
+    try {
+      await refreshNow()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const lastText = cookieAt
+    ? `上次登录/续期：${new Date(cookieAt).toLocaleString()}`
+    : '尚未记录登录时间（下次续期后显示）'
+
+  return (
+    <View>
+      <CheckBoxItem
+        check={autoRefresh}
+        onChange={handleToggle}
+        label={'自动续期登录（推荐）'}
+      />
+      <Text size={12} color={theme['c-font-label']} style={styles.howto}>
+        {'开启后每 6 小时检查一次，在凭证过期前自动换新，避免十天左右掉登录'}
+      </Text>
+      <Text size={12} color={theme['c-font-label']} style={styles.howto}>{lastText}</Text>
+      <Btn onPress={() => { void handleRefreshNow() }} disabled={!wy_profile || busy}>
+        {busy ? '续期中...' : '立即刷新凭证'}
+      </Btn>
+    </View>
+  )
+}
+
 const ScrobbleToggle = () => {
   const t = useI18n()
   const theme = useTheme()
@@ -397,6 +439,7 @@ export default memo(() => {
       <LoginStatus onWebLoginCookie={setWebLoginCookie} />
       <Accounts />
       <CookieInput presetCookie={webLoginCookie} />
+      <AutoRefreshSection />
       <ScrobbleToggle />
     </Section>
   )

@@ -1,6 +1,10 @@
 import musicSdk from '@/utils/musicSdk'
 import { updateSetting } from '@/core/common'
 import settingState from '@/store/setting/state'
+import { saveData } from '@/plugins/storage'
+import { storageDataPrefix } from '@/config/constant'
+import { toast } from '@/utils/tools'
+import BackgroundTimer from 'react-native-background-timer'
 import userState from './state'
 import {
   setWyUid,
@@ -12,6 +16,7 @@ import {
   setWySubscribedAlbums,
   applyWyPlaylists,
   loadWyPlaylists,
+  initWyUser,
 } from './action'
 import type { WyUserProfile, FollowedArtistInfo, SubscribedAlbumInfo } from './state'
 
@@ -30,6 +35,18 @@ export const getCurrentCookie = (): string => {
   return settingState.setting['common.wy_cookie'] || ''
 }
 
+export const getCookieAt = (): number => {
+  return settingState.setting['common.wy_cookie_at'] || 0
+}
+
+/**
+ * 设置更新是 throttle 落盘的（100ms）。续期后的新 Cookie 是关键凭证，
+ * 必须立即写盘，否则用户马上杀进程会丢失续期结果、退回旧凭证。
+ */
+const saveSettingNow = async() => {
+  await saveData(storageDataPrefix.setting, settingState.setting)
+}
+
 /**
  * 使用 Cookie 拉取账号资料。失败时抛出异常（登录过期 / Cookie 无效）。
  */
@@ -40,13 +57,14 @@ export const fetchProfile = async(cookie: string): Promise<WyUserProfile> => {
 /**
  * 将账号信息写入已保存账号列表（去重，按 uid）
  */
-const upsertAccount = (cookie: string, profile: WyUserProfile) => {
+const upsertAccount = (cookie: string, profile: WyUserProfile, cookieAt?: number) => {
   const accounts = getSavedAccounts().filter(a => a.uid !== profile.uid)
   accounts.unshift({
     cookie,
     nickname: profile.nickname,
     avatarUrl: profile.avatarUrl,
     uid: profile.uid,
+    cookieAt: cookieAt ?? Date.now(),
   })
   updateSetting({ 'common.wy_accounts': accounts })
 }
@@ -141,13 +159,64 @@ export const loginWithCookie = async(cookie: string): Promise<WyUserProfile> => 
     throw new Error('Cookie 无效：未找到 MUSIC_U 字段，请按说明重新提取')
   }
   const profile = await fetchProfile(cleanCookie)
-  updateSetting({ 'common.wy_cookie': cleanCookie })
-  upsertAccount(cleanCookie, profile)
+  const now = Date.now()
+  updateSetting({ 'common.wy_cookie': cleanCookie, 'common.wy_cookie_at': now })
+  await saveSettingNow()
+  upsertAccount(cleanCookie, profile, now)
   setWyUid(profile.uid)
   setWyVipType(profile.vipType)
   setWyProfile(profile)
   void refreshUserData(cleanCookie)
   return profile
+}
+
+/**
+ * 续期当前登录态：用尚未过期的 MUSIC_U 调 token/refresh 换新凭证。
+ *
+ * 关键点：必须在旧凭证过期前调用。服务端用当前凭证校验，一旦过期就救不回来，
+ * 只能重新登录。所以由调用方（启动探活 / 定时任务）在到期前提前触发。
+ *
+ * 成功后新 Cookie 与原 Cookie 合并（保留 os/appver/deviceId 等），
+ * 更新签发时间、同步已保存账号列表，并立即落盘。
+ *
+ * 返回 true 表示续期成功；false 表示无需续期（未登录/开关关闭）。
+ * 失败抛异常，由调用方决定是否提示重新登录。
+ */
+export const refreshLoginCookie = async(): Promise<boolean> => {
+  const cookie = getCurrentCookie()
+  if (!cookie) return false
+  if (!settingState.setting['common.wy_auto_refresh']) return false
+
+  const result = await wyUser().refreshToken(cookie)
+  const now = Date.now()
+  updateSetting({ 'common.wy_cookie': result.cookie, 'common.wy_cookie_at': now })
+
+  // 同步已保存账号列表里同一 uid 的 cookie，避免"当前源续期了、账号列表还是旧的"
+  const uid = userState.wy_uid
+  if (uid) {
+    const accounts = getSavedAccounts().map(a =>
+      a.uid === uid ? { ...a, cookie: result.cookie, cookieAt: now } : a,
+    )
+    updateSetting({ 'common.wy_accounts': accounts })
+  }
+  await saveSettingNow()
+  return result.changed
+}
+
+/**
+ * 判断 Cookie 是否需要续期。基于签发时间 + 固定周期。
+ *
+ * 网易 web MUSIC_U 实际寿命约 7~30 天（观察值约 10 天）。为了在过期前
+ * 留出充足余量，默认 REFRESH_INTERVAL = 3 天就主动续一次；即使某次失败，
+ * 之后每次启动/定时都会重试，仍有 7 天窗口。
+ */
+const REFRESH_INTERVAL = 3 * 24 * 60 * 60 * 1000
+export const isCookieRefreshDue = (): boolean => {
+  if (!getCurrentCookie()) return false
+  if (!settingState.setting['common.wy_auto_refresh']) return false
+  const at = getCookieAt()
+  if (!at) return true // 老存档没有签发时间，启动时先续一次以建立基准
+  return Date.now() - at >= REFRESH_INTERVAL
 }
 
 /**
@@ -284,4 +353,74 @@ export const stopQrSession = (session: QrSessionLike) => {
 
 interface QrSessionLike {
   stopped: boolean
+}
+
+// ============ 登录态保活：启动探活 + 定时续期 ============
+
+// 定时检查间隔：6 小时。配合 REFRESH_INTERVAL（3 天）判断是否需要续期，
+// 即使某次续期失败，一天内仍有 4 次重试机会，远早于 Cookie 到期（约 10 天）。
+const AUTO_REFRESH_CHECK_INTERVAL = 6 * 60 * 60 * 1000
+let refreshTimer: ReturnType<typeof BackgroundTimer.setInterval> | null = null
+const refreshState = { running: false }
+
+/**
+ * 执行一次保活检查：需要续期时续期，随后（重新）拉取用户资料。
+ * 续期失败不阻断资料拉取——旧 Cookie 可能仍有效，让它有机会继续工作；
+ * 只有当后续 getUid 也失败时，才判定真正过期并提示用户。
+ */
+const runKeepAlive = async() => {
+  if (refreshState.running) return
+  refreshState.running = true
+  try {
+    if (isCookieRefreshDue() && getCurrentCookie()) {
+      try {
+        await refreshLoginCookie()
+        console.log('[wy] cookie 续期成功')
+      } catch (err: any) {
+        // 续期失败不致命，保留旧 Cookie 继续尝试拉资料
+        console.warn('[wy] cookie 续期失败，尝试用现有凭证:', err?.message ?? err)
+      }
+    }
+    await initWyUser()
+  } finally {
+    refreshState.running = false
+  }
+}
+
+/**
+ * 应用启动时调用：先做一次保活检查（含必要时续期），再挂定时任务。
+ * 替代原来「仅冷启动拉一次资料、失败静默」的行为。
+ */
+export const initWyUserWithRefresh = async() => {
+  if (!getCurrentCookie()) return // 未登录不启动保活
+
+  await runKeepAlive()
+
+  if (refreshTimer != null) {
+    BackgroundTimer.clearInterval(refreshTimer)
+    refreshTimer = null
+  }
+  if (!settingState.setting['common.wy_auto_refresh']) return
+  refreshTimer = BackgroundTimer.setInterval(() => {
+    void runKeepAlive()
+  }, AUTO_REFRESH_CHECK_INTERVAL)
+}
+
+/**
+ * 供 UI「立即刷新凭证」按钮调用：强制续期一次（忽略周期判断）。
+ * 返回是否成功；失败时 toast 提示。
+ */
+export const refreshNow = async(): Promise<boolean> => {
+  if (!getCurrentCookie()) {
+    toast('未登录，无法续期')
+    return false
+  }
+  try {
+    await refreshLoginCookie()
+    toast('登录凭证已刷新')
+    return true
+  } catch (err: any) {
+    toast(`凭证刷新失败：${err?.message ?? err}`)
+    return false
+  }
 }

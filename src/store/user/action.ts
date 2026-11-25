@@ -1,6 +1,7 @@
 import state, { type FollowedArtistInfo, type SubscribedAlbumInfo, type SubscribedPlaylistInfo, type UserPlaylistInfo, type WyUserProfile } from './state'
 import { appSetting } from '@/utils/musicSdk/wy/appSetting'
 import musicSdk from '@/utils/musicSdk'
+import { toast } from '@/utils/tools'
 
 // 网易云账号运行时状态管理（移植自 LX-N Music store/user）
 // 注意：musicSdk 与本模块存在模块级相互引用（wy/user.js 引用 setWyVipType），
@@ -11,6 +12,9 @@ import musicSdk from '@/utils/musicSdk'
 const emitWyUpdate = () => {
   global.state_event.wyUserUpdated()
 }
+
+// 登录过期提示只弹一次，避免冷启动探活 + 定时检查重复打扰
+let authTipShown = false
 
 export const setWyUid = (uid: string | null) => {
   state.wy_uid = uid
@@ -24,6 +28,7 @@ export const setWyVipType = (type: number) => {
 
 export const setWyProfile = (profile: WyUserProfile | null) => {
   state.wy_profile = profile
+  if (profile) authTipShown = false // 重新登录后允许下次过期再提示
   emitWyUpdate()
 }
 
@@ -224,7 +229,20 @@ export const initWyUser = async() => {
     } catch (e) {
       console.warn('自动初始化：获取收藏专辑失败', e)
     }
-  } catch (err) {
-    console.error('自动初始化网易云登录状态失败:', err)
+  } catch (err: any) {
+    // 走到这里说明 getUid 失败了：续期没能救回来，凭证确实已失效。
+    // 不再静默——提示用户重新登录，并清空运行时登录态（保留持久化的失效 Cookie，
+    // 让用户在设置页仍能看到账号、主动重新登录覆盖）。
+    const msg = String(err?.message ?? err ?? '')
+    console.error('自动初始化网易云登录状态失败:', msg)
+    if (/过期|无效|failed|error/i.test(msg)) {
+      setWyUid(null)
+      setWyProfile(null)
+      setWyVipType(0)
+      if (!authTipShown) {
+        authTipShown = true
+        toast('网易云登录已过期，请在设置-音源/网易云中重新登录')
+      }
+    }
   }
 }
