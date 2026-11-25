@@ -24,3 +24,8 @@
   **[] $VALUES;
   public *;
 }
+
+# 车机语音模块：Manifest 声明的 Receiver/Activity、RN NativeModule（按字符串名反射）、
+# 以及 SharedPreferences 辅助类全部保留，避免 R8 重命名/内联导致车机上广播收不到。
+-keep class cn.toside.music.mobile.voice.** { *; }
+-keepclassmembers class cn.toside.music.mobile.voice.** { *; }

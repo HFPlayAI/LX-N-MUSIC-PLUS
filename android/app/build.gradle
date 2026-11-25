@@ -110,7 +110,11 @@ android {
 
     namespace "cn.toside.music.mobile"
     defaultConfig {
-        applicationId "cn.toside.music.mobile"
+        // 车机适配：允许构建时通过 -PtestAppId=xxx 覆盖包名（如伪装比亚迪白名单包名）。
+        // 不传时保持原包名，普通手机版行为不变。
+        applicationId project.hasProperty('testAppId')
+                ? project.property('testAppId').toString()
+                : "cn.toside.music.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode verCode

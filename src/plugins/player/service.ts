@@ -5,11 +5,24 @@ import TrackPlayer, { State as TPState, Event as TPEvent } from 'react-native-tr
 import { isTempId, isEmpty } from './utils'
 // import { play as lrcPlay, pause as lrcPause } from '@/core/lyric'
 import { exitApp } from '@/core/common'
-import { getCurrentTrackId } from './playList'
+import { getCurrentTrack, getCurrentTrackId } from './playList'
 import { pause, play, playNext, playPrev } from '@/core/player/player'
 import { handleTrackChanged, handleQueueEnded } from '@/core/wyScrobble'
+import { reportVoiceState } from '@/utils/nativeModules/voice'
 
 let isInitialized = false
+
+// 播放状态变化时上报给比亚迪小迪，让车机界面能显示当前歌曲名/歌手。
+// 用项目现成的 getCurrentTrack()（从本地播放队列取），不依赖新版 track-player 的 getActiveTrack。
+const reportVoiceTrack = async(playing: boolean) => {
+  try {
+    const track = await getCurrentTrack()
+    if (!track?.title) return
+    reportVoiceState(playing, String(track.title), String(track.artist ?? ''))
+  } catch (err: any) {
+    console.log('reportVoiceTrack error:', err?.message)
+  }
+}
 
 // let retryTrack: LX.Player.Track | null = null
 // let retryGetUrlId: string | null = null
@@ -90,10 +103,12 @@ const registerPlaybackService = async() => {
       case TPState.Paused:
         global.app_event.playerPause()
         global.app_event.pause()
+        void reportVoiceTrack(false)
         break
       case TPState.Playing:
         global.app_event.playerPlaying()
         global.app_event.play()
+        void reportVoiceTrack(true)
         break
       case TPState.Buffering:
         global.app_event.pause()

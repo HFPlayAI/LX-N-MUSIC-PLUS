@@ -91,6 +91,72 @@
         </intent-filter>
       </activity>
 
+      <!-- 比亚迪小迪 / 酷我车机语音：中转 Activity（部分车机只认 Activity 启动，不认广播） -->
+      <activity
+        android:name=".voice.VoiceRelayActivity"
+        android:excludeFromRecents="true"
+        android:exported="true"
+        android:noHistory="true"
+        android:taskAffinity="${applicationId}.voicerelay"
+        android:theme="@style/VoiceRelayTheme">
+        <intent-filter>
+          <action android:name="cn.kuwo.kwmusicauto.action.STARTAPP" />
+          <action android:name="cn.kuwo.kwmusicauto.action.PLAY_MUSIC" />
+          <action android:name="cn.kuwo.kwmusicauto.action.SEARCH_MUSIC" />
+          <action android:name="cn.kuwo.kwmusicauto.action.PLAY_MUSIC_BY_TYPE" />
+          <action android:name="cn.kuwo.kwmusicauto.action.PLAY_ALBUM" />
+          <action android:name="cn.kuwo.kwmusicauto.action.SEARCH_AND_PLAY_MUSIC_BY_SONGLISTID" />
+          <action android:name="cn.kuwo.kwmusicauto.action.OPEN_FAVORITE_MUSIC" />
+          <action android:name="cn.kuwo.kwmusicauto.action.vip.PLAY_ALL_MUSIC" />
+          <action android:name="cn.kuwo.kwmusicauto.action.PLAY_MUSIC_INDEX" />
+          <action android:name="cn.kuwo.kwmusicauto.action.JUMP" />
+          <action android:name="cn.kuwo.kwmusicauto.action.RANDOM_PLAY_MUSIC" />
+          <action android:name="cn.kuwo.kwmusicauto.action.PAGE_OPERATION" />
+          <action android:name="cn.kuwo.music.car.actions" />
+          <!-- 部分车型/版本的小迪用 startActivity 投递，这里与广播通道并行兜底 -->
+          <action android:name="com.byd.action.AUTOVOICE_SEARCH" />
+          <action android:name="com.byd.action.AUTOVOICE_SEARCH_PLUS" />
+          <action android:name="com.byd.action.AUTOVOICE_PLAY_RANDOM" />
+          <action android:name="com.byd.action.AUTOVOICE_PLAY_FAVORITE" />
+          <action android:name="com.byd.action.AUTOVOICE_PLAY_LATELY" />
+          <action android:name="com.byd.action.AUTOVOICE_PLAY_DOWNLOAD" />
+          <action android:name="com.byd.action.AUTOVOICE_RECOMMEND" />
+          <action android:name="com.byd.action.AUTOVOICE_JUMP_TO" />
+          <category android:name="android.intent.category.LAUNCHER" />
+          <category android:name="android.intent.category.DEFAULT" />
+        </intent-filter>
+      </activity>
+
+      <!-- 比亚迪小迪 / 酷我车机语音：广播接收器 -->
+      <receiver
+        android:name=".voice.VoiceReceiver"
+        android:exported="true">
+        <intent-filter>
+          <action android:name="cn.kuwo.kwmusicauto.action.SEARCH_MUSIC" />
+          <action android:name="cn.kuwo.kwmusicauto.action.PLAY_MUSIC" />
+          <action android:name="cn.kuwo.kwmusicauto.action.SEARCH_AND_PLAY_MUSIC_BY_SONGLISTID" />
+          <action android:name="cn.kuwo.kwmusicauto.action.PLAY_MUSIC_BY_TYPE" />
+          <action android:name="cn.kuwo.kwmusicauto.action.PLAY_ALBUM" />
+          <action android:name="cn.kuwo.kwmusicauto.action.OPEN_FAVORITE_MUSIC" />
+          <action android:name="cn.kuwo.kwmusicauto.action.vip.PLAY_ALL_MUSIC" />
+          <action android:name="cn.kuwo.kwmusicauto.action.PLAY_MUSIC_INDEX" />
+          <action android:name="cn.kuwo.kwmusicauto.action.STARTAPP" />
+          <action android:name="cn.kuwo.kwmusicauto.action.RANDOM_PLAY_MUSIC" />
+          <action android:name="cn.kuwo.kwmusicauto.action.PAGE_OPERATION" />
+          <action android:name="cn.kuwo.kwmusicauto.action.JUMP" />
+          <action android:name="cn.kuwo.kwmusicauto.action.MEDIA_BUTTON" />
+          <action android:name="cn.kuwo.music.car.actions" />
+          <action android:name="com.byd.action.AUTOVOICE_SEARCH" />
+          <action android:name="com.byd.action.AUTOVOICE_SEARCH_PLUS" />
+          <action android:name="com.byd.action.AUTOVOICE_PLAY_RANDOM" />
+          <action android:name="com.byd.action.AUTOVOICE_PLAY_FAVORITE" />
+          <action android:name="com.byd.action.AUTOVOICE_PLAY_LATELY" />
+          <action android:name="com.byd.action.AUTOVOICE_PLAY_DOWNLOAD" />
+          <action android:name="com.byd.action.AUTOVOICE_RECOMMEND" />
+          <action android:name="com.byd.action.AUTOVOICE_JUMP_TO" />
+        </intent-filter>
+      </receiver>
+
       <!-- Define a FileProvider for API24+ -->
       <!-- note this is the authority name used by other modules like rn-fetch-blob, easy to have conflicts -->
       <provider

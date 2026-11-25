@@ -1,10 +1,17 @@
+import { ToastAndroid } from 'react-native'
 import { decodeName, toNewMusicInfo } from '@/utils'
 import { dataVerify, qualityFilter } from './utils'
 import playerState from '@/store/player/state'
+import settingState from '@/store/setting/state'
 import { LIST_IDS } from '@/config/constant'
-import { playNext } from '@/core/player/player'
+import { playNext, playList } from '@/core/player/player'
 import { getOtherSource } from '@/core/music/utils'
 import { addTempPlayList } from '@/core/player/tempPlayList'
+import { setTempList } from '@/core/list'
+import { search, notifySearchTextUpdated } from '@/core/search/music'
+import { setSearchText } from '@/core/search/search'
+import { setNavActiveId } from '@/core/common'
+import { getSearchSetting } from '@/utils/data'
 
 // const handleSearchMusic = ({ paths, data: params }) => {
 //   let text
@@ -182,19 +189,46 @@ const handleSearchPlayMusic = async({ paths, data }) => {
   } else info = data
   info = verifyInfo(info)
   if (!info.name) return
+  const beforeListId = playerState.playInfo.playerListId
+  const beforeMusicId = playerState.playMusicInfo.musicInfo?.id
+  let musicQueue = []
   const musicList = await searchMusic(info.name, info.singer || '', info.albumName || '', info.interval || null)
   if (musicList.length) {
     console.log('find music:', musicList)
-    const musicInfo = musicList[0]
-    const isPlaying = !!playerState.playMusicInfo.musicInfo
+    musicQueue = musicList
+  } else {
+    // 本地缓存没命中时回退到在线搜索，10 秒超时保护（车机语音点歌必须给出响应）
+    const keyword = `${info.name} ${info.singer || ''}`.trim()
+    const { source } = await getSearchSetting()
+    const list = await Promise.race([
+      search(keyword, 1, source),
+      new Promise(resolve => setTimeout(() => { resolve([]) }, 10000)),
+    ])
+    console.log('fallback search:', keyword, source, list.length)
+    if (list.length) musicQueue = list
+  }
+  const musicInfo = musicQueue[0] ?? null
+  if (musicInfo) {
+    const afterListId = playerState.playInfo.playerListId
+    const afterMusicId = playerState.playMusicInfo.musicInfo?.id
+    // 搜索期间用户自己切了歌/列表，则不覆盖用户的操作
+    if (beforeMusicId && (afterListId !== beforeListId || afterMusicId !== beforeMusicId)) {
+      if (settingState.setting['player.isShowVoiceTip']) ToastAndroid.show('检测到你已切换播放，语音点歌已取消', ToastAndroid.LONG)
+      return
+    }
+    if (settingState.setting['player.isShowVoiceTip']) ToastAndroid.show(`播放: ${musicInfo.name} - ${String(musicInfo.singer ?? '')}`, ToastAndroid.SHORT)
     if (info.playLater) {
       addTempPlayList([{ listId: LIST_IDS.PLAY_LATER, musicInfo }])
     } else {
-      addTempPlayList([{ listId: LIST_IDS.PLAY_LATER, musicInfo, isTop: true }])
-      if (isPlaying) playNext()
+      await setTempList('voice_search', musicQueue.slice(0, 30))
+      await playList(LIST_IDS.TEMP, 0)
     }
+    setSearchText(info.name)
+    notifySearchTextUpdated(info.name)
+    setNavActiveId('nav_search')
   } else {
     console.log('msuic not found:', info)
+    if (settingState.setting['player.isShowVoiceTip']) ToastAndroid.show(`未找到: ${info.name}`, ToastAndroid.LONG)
   }
 }
 

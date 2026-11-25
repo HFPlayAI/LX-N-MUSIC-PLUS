@@ -8,6 +8,10 @@ export const setSource: typeof searchMusicActions['setSource'] = (source) => {
 export const setSearchText: typeof searchMusicActions['setSearchText'] = (text) => {
   searchMusicActions.setSearchText(text)
 }
+// 语音点歌等外部入口设置搜索文本后，广播给搜索页 UI 同步显示
+export const notifySearchTextUpdated = (text: string) => {
+  global.state_event.searchTextUpdated(text)
+}
 export const setListInfo: typeof searchMusicActions.setListInfo = (result, id, page) => {
   return searchMusicActions.setListInfo(result, id, page)
 }

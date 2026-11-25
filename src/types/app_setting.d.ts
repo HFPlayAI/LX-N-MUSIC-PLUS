@@ -21,6 +21,10 @@ declare global {
        * 网易云 UID
        */
       uid?: string
+      /**
+       * 该账号 Cookie 的签发/最近续期时间（毫秒时间戳）
+       */
+      cookieAt?: number
     }
 
     interface AppSetting {
@@ -44,6 +48,16 @@ declare global {
        * 网易云登录 Cookie（含 MUSIC_U），空串表示未登录
        */
       'common.wy_cookie': string
+
+      /**
+       * 当前 Cookie 的签发/最近续期时间（毫秒时间戳），0 表示未知
+       */
+      'common.wy_cookie_at': number
+
+      /**
+       * 是否自动续期网易云登录态（定时 + 启动前刷新）
+       */
+      'common.wy_auto_refresh': boolean
 
       /**
        * 网易云多账号已保存的账号列表
@@ -214,6 +228,11 @@ declare global {
        * 是否启用音频卸载功能（这可以节省耗电量，没有播放异常问题不建议关闭）
        */
       'player.isEnableAudioOffload': boolean
+
+      /**
+       * 是否显示语音点歌提示（Toast 反馈）
+       */
+      'player.isShowVoiceTip': boolean
 
       /**
        * 是否显示歌词翻译

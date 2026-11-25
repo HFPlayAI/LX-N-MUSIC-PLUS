@@ -8,12 +8,13 @@ import dataInit from './dataInit'
 import initSync from './sync'
 import initCommonState from './common'
 import { initDeeplink } from './deeplink'
+import { initVoiceCommand } from './voiceCommand'
 import { setApiSource } from '@/core/apiSource'
 import commonActions from '@/store/common/action'
 import settingState from '@/store/setting/state'
 import { bootLog } from '@/utils/bootLog'
 import { cheatTip } from '@/utils/tools'
-import { initWyUser } from '@/store/user/action'
+import { initWyUserWithRefresh } from '@/store/user/service'
 
 let isFirstPush = true
 const handlePushedHomeScreen = async() => {
@@ -53,6 +54,11 @@ export default async() => {
   bootLog('Playback Service Registered.')
   await initPlayer(setting)
   bootLog('Player inited.')
+
+  // 车机语音指令监听（比亚迪小迪 / 酷我协议）在播放器就绪后立即挂载。
+  // 不能等到用户进首页：车机冷启动可能有提示弹窗未关，而语音指令必须是"一说话就生效"。
+  void initVoiceCommand()
+  bootLog('Voice command inited.')
   await dataInit(setting)
   bootLog('Data inited.')
   await initCommonState(setting)
@@ -61,8 +67,8 @@ export default async() => {
   void initSync(setting)
   bootLog('Sync inited.')
 
-  // 初始化网易云登录态（Cookie 有效时拉取 UID/喜欢列表/歌单等，失败静默）
-  void initWyUser()
+  // 初始化网易云登录态：启动探活 + 必要时续期，随后拉取 UID/喜欢列表/歌单等
+  void initWyUserWithRefresh()
   bootLog('Wy user inited.')
 
   // syncSetting()

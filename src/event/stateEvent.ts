@@ -132,6 +132,13 @@ export class StateEvent extends Event {
   wyUserUpdated() {
     this.emit('wyUserUpdated')
   }
+
+  /**
+   * 搜索框文本更新（语音点歌等外部入口设置搜索文本后通知 UI 同步）
+   */
+  searchTextUpdated(text: string) {
+    this.emit('searchTextUpdated', text)
+  }
 }
 
 
