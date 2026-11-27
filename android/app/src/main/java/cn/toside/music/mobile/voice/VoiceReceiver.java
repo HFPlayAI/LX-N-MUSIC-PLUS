@@ -171,7 +171,8 @@ public class VoiceReceiver extends BroadcastReceiver {
       VoiceDebugLog.append(context, "已发JS", "指令已通过 voice-command 事件交给 JS 处理");
       return;
     }
-    VoiceDebugLog.append(context, "冷启动", "RN 未就绪，改为拉起 App 并通过 pending 补偿");
+    // RN 未就绪：拉起 App，指令已存 pending，App 起来后由 JS 消费执行
+    VoiceDebugLog.append(context, "冷启动", "RN 未就绪，拉起 App 并通过 pending 补偿");
     launchApp(context);
   }
 

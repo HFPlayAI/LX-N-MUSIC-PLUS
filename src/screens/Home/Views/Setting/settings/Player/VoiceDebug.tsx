@@ -35,13 +35,27 @@ export default memo(() => {
   }, [refresh])
 
   const handleTest = () => {
-    const name = keyword.trim()
-    if (!name) {
-      toast('请输入测试关键词')
+    const raw = keyword.trim()
+    if (!raw) {
+      toast('请输入测试内容')
       return
     }
-    sendVoiceTestBroadcast(name)
-    toast(`已发出测试指令：${name}，稍后点刷新查看日志`)
+    // 支持「歌名-歌手」和「歌名 歌手」两种写法，和车机下发 name/singer 两个字段等价
+    let name = raw
+    let artist = ''
+    const dash = raw.split('-')
+    if (dash.length >= 2) {
+      name = dash[0].trim()
+      artist = dash.slice(1).join('-').trim()
+    } else {
+      const space = raw.split(/\s+/)
+      if (space.length >= 2) {
+        name = space[0]
+        artist = space.slice(1).join(' ').trim()
+      }
+    }
+    sendVoiceTestBroadcast(name, artist)
+    toast(`已发出测试指令：${name}${artist ? ' / ' + artist : ''}，稍后点刷新查看日志`)
     setTimeout(() => { void refresh() }, 1500)
   }
 
@@ -71,7 +85,7 @@ export default memo(() => {
       <TextInput
         value={keyword}
         onChangeText={setKeyword}
-        placeholder="测试关键词，如：稻香"
+        placeholder="歌名-歌手，如：燃-容祖儿"
         style={[styles.input, { borderColor: theme['c-border-background'], color: theme['c-font'] }]}
       />
       <View style={styles.btnRow}>

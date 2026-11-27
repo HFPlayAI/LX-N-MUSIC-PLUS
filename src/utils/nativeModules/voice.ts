@@ -95,9 +95,9 @@ export const clearVoiceDebugLogs = () => {
   }
 }
 
-export const sendVoiceTestBroadcast = (keyword: string) => {
+export const sendVoiceTestBroadcast = (keyword: string, artist?: string) => {
   try {
-    VoiceModule.sendTestBroadcast(keyword)
+    VoiceModule.sendTestBroadcast(keyword, artist ?? '')
   } catch (err: any) {
     console.log('sendVoiceTestBroadcast error:', err?.message)
   }

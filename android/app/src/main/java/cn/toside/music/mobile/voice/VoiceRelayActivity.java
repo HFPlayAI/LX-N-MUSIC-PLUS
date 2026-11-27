@@ -11,14 +11,15 @@ public class VoiceRelayActivity extends Activity {
   @Override
   protected void onCreate(@Nullable Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
-    Intent intent = getIntent();
-    if (intent != null) {
-      try {
-        new VoiceReceiver().onReceive(this, intent);
-      } catch (Exception ignored) {
-      }
+    // 主题是 Theme.NoDisplay：必须在 onCreate 内 finish，否则系统会抛
+    // "Activity did not call finish() prior to onResume()"，所以放在 finally 里兜底。
+    try {
+      Intent intent = getIntent();
+      if (intent != null) new VoiceReceiver().onReceive(this, intent);
+    } catch (Exception ignored) {
+    } finally {
+      finish();
     }
-    finish();
   }
 
   @Override

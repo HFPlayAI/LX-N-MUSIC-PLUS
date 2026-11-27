@@ -73,13 +73,18 @@ const handleVoiceCommand = async(params: VoiceCommandParams, isRetry = false) =>
         const name = keyword || artist
         if (!name) return
         if (isTipEnabled()) ToastAndroid.show(`正在搜索: ${name}`, ToastAndroid.SHORT)
-        await handleMusicAction('searchPlay', {
+        const handled = await handleMusicAction('searchPlay', {
           paths: [],
           data: {
             name,
             singer: keyword ? artist : '',
           },
         })
+        // false 表示没匹配到（或检索期间用户切了列表），这时候不能再报「成功」
+        if (handled === false) {
+          reportVoiceDebug('未找到', `type=searchPlay 未匹配到：${name}${artist ? ' / ' + artist : ''}`)
+          return
+        }
         break
       }
       case 'player': {

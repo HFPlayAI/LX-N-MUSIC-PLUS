@@ -18,6 +18,7 @@ public final class VoicePendingStore {
     try {
       JSONObject json = new JSONObject();
       json.put("type", type);
+      json.put("at", System.currentTimeMillis());
       if (keyword != null) json.put("keyword", keyword);
       if (artist != null) json.put("artist", artist);
       if (playerAction != null) json.put("playerAction", playerAction);

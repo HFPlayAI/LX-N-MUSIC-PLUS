@@ -28,7 +28,11 @@ const getOtherSourcePromises = new Map()
 export const existTimeExp = /\[\d{1,2}:.*\d{1,4}\]/
 const otherSourceCache = new Map<LX.Music.MusicInfo | LX.Download.ListItem, LX.Music.MusicInfoOnline[]>()
 
-export const getOtherSource = async(musicInfo: LX.Music.MusicInfo | LX.Download.ListItem, isRefresh = false): Promise<LX.Music.MusicInfoOnline[]> => {
+export const getOtherSource = async(
+  musicInfo: LX.Music.MusicInfo | LX.Download.ListItem,
+  isRefresh = false,
+  options: { onlySources?: string[], strictName?: boolean } = {},
+): Promise<LX.Music.MusicInfoOnline[]> => {
   // if (!isRefresh) {
   //   const cachedInfo = await getOtherSourceFromStore(musicInfo.id)
   //   if (cachedInfo.length) return cachedInfo
@@ -70,7 +74,7 @@ export const getOtherSource = async(musicInfo: LX.Music.MusicInfo | LX.Download.
       timeout = null
       reject(new Error('find music timeout'))
     }, 12_000)
-    findMusic(searchMusicInfo).then((otherSource) => {
+    findMusic(searchMusicInfo, { onlySources: options.onlySources, strictName: options.strictName }).then((otherSource) => {
       if (otherSourceCache.size > 10) otherSourceCache.clear()
       const source = otherSource.map(toNewMusicInfo) as LX.Music.MusicInfoOnline[]
       otherSourceCache.set(musicInfo, source)

@@ -62,11 +62,16 @@ public class VoiceModule extends ReactContextBaseJavaModule {
     }
   }
 
-  /** 调试面板：最近一次向小迪注册的时间戳（0 表示从未成功） */
+  /**
+   * 调试面板：最近一次向小迪注册的时间戳（0 表示从未成功）。
+   * 必须转成 double：RN 的 Arguments.fromJavaArgs() 只支持
+   * Boolean/Integer/Double/Float/String/Map/Array，直接返回 long 会装箱成 Long 并在
+   * 回调转换时抛异常，导致 JS 侧拿到 0、面板误显示「未注册」。
+   */
   @ReactMethod
   public void getRegisteredAt(Promise promise) {
     try {
-      promise.resolve(VoiceDebugLog.getRegisteredAt(getReactApplicationContext()));
+      promise.resolve((double) VoiceDebugLog.getRegisteredAt(getReactApplicationContext()));
     } catch (Exception e) {
       promise.reject(e);
     }
@@ -89,13 +94,17 @@ public class VoiceModule extends ReactContextBaseJavaModule {
    * 走的是和真实车机完全一样的 VoiceReceiver → JS 链路，用来在车机上自检。
    */
   @ReactMethod
-  public void sendTestBroadcast(String keyword) {
+  public void sendTestBroadcast(String keyword, String artist) {
     try {
       android.content.Intent intent = new android.content.Intent(VoiceReceiver.ACTION_BYD_SEARCH);
       intent.setPackage(getReactApplicationContext().getPackageName());
       intent.putExtra(VoiceReceiver.EXTRA_BYD_KEYWORDS, keyword);
+      if (artist != null && !artist.isEmpty()) {
+        intent.putExtra(VoiceReceiver.EXTRA_BYD_ARTIST, artist);
+      }
       getReactApplicationContext().sendBroadcast(intent);
-      VoiceDebugLog.append(getReactApplicationContext(), "自检", "已发出测试广播: " + keyword);
+      VoiceDebugLog.append(getReactApplicationContext(), "自检",
+              "已发出测试广播: " + keyword + (artist == null || artist.isEmpty() ? "" : " / " + artist));
     } catch (Exception e) {
       VoiceDebugLog.append(getReactApplicationContext(), "自检失败", String.valueOf(e.getMessage()));
     }

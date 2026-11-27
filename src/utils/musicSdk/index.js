@@ -59,22 +59,25 @@ export const init = () => {
 }
 
 
-export const searchMusic = async({ name, singer, source: s, limit = 25 }) => {
+// 跨平台搜索。onlySources 只在这些源里搜（不传则搜全部可用源）。
+// 车机语音点歌用它限定为 kw/kg/tx/wy 四家，避免咪咕等源返回的片段/异版抢位。
+export const searchMusic = async({ name, singer, source: s, limit = 25, onlySources = null }) => {
   const trimStr = str => typeof str == 'string' ? str.trim() : str
   const musicName = trimStr(name)
   const tasks = []
   const excludeSource = ['xm']
   for (const source of sources.sources) {
+    if (onlySources && !onlySources.includes(source.id)) continue
     if (!sources[source.id].musicSearch || source.id == s || excludeSource.includes(source.id)) continue
     tasks.push(sources[source.id].musicSearch.search(`${musicName} ${singer || ''}`.trim(), 1, limit).catch(_ => null))
   }
   return (await Promise.all(tasks)).filter(s => s)
 }
 
-export const findMusic = async(musicInfo) => {
+export const findMusic = async(musicInfo, options = {}) => {
   const { name, singer, albumName, interval, source: s } = musicInfo
 
-  const lists = await searchMusic({ name, singer, source: s, limit: 25 })
+  const lists = await searchMusic({ name, singer, source: s, limit: 25, onlySources: options.onlySources ?? null })
 
   const singersRxp = /、|&|;|；|\/|,|，|\|/
   const sortSingle = singer => singersRxp.test(singer)
@@ -110,9 +113,16 @@ export const findMusic = async(musicInfo) => {
   }
   const trimStr = str => typeof str == 'string' ? str.trim() : (str || '')
   const filterStr = str => typeof str == 'string' ? str.replace(/\s|'|\.|,|，|&|"|、|\(|\)|（|）|`|~|-|<|>|\||\/|\]|\[|!|！/g, '') : String(str || '')
-  const fMusicName = filterStr(name).toLowerCase()
+  // 语音点歌（strictName）额外剥离括号内容：'燃 (Live)' → '燃'。
+  // filterStr 只去括号符号、保留「live」等内容，导致「燃 (Live)」归一化成「燃live」，
+  // 与用户说的「燃」不相等，于是退化到子串匹配、命中「燃亮我」。先剥离再归一才能精确命中。
+  const norm = (s) => {
+    const str = typeof s == 'string' ? s : (s == null ? '' : String(s))
+    return filterStr(options.strictName ? str.replace(/[(（[【][^)）\]】]*[)）\]】]/g, '') : str).toLowerCase()
+  }
+  const fMusicName = norm(name)
   const fSinger = filterStr(sortSingle(singer)).toLowerCase()
-  const fAlbumName = filterStr(albumName).toLowerCase()
+  const fAlbumName = norm(albumName)
   const fInterval = getIntv(interval)
   const isEqualsInterval = (intv) => Math.abs((fInterval || intv) - (intv || fInterval)) <= 5
   const isEqualsVersionMusicNameChar = (name) => {
@@ -121,7 +131,17 @@ export const findMusic = async(musicInfo) => {
     }
     return true
   }
-  const isIncludesName = (name) => (fMusicName.includes(name) || name.includes(fMusicName)) && isEqualsVersionMusicNameChar(name)
+  // strictName：语音点歌场景要求更严，避免「燃」这种单字歌名被子串匹配到「燃亮我」
+  const isIncludesName = (name) => {
+    if (!isEqualsVersionMusicNameChar(name)) return false
+    if (fMusicName === name) return true
+    if (!fMusicName.includes(name) && !name.includes(fMusicName)) return false
+    if (!options.strictName) return true
+    const short = Math.min(fMusicName.length, name.length)
+    const long = Math.max(fMusicName.length, name.length)
+    if (short < 2) return false
+    return short / long >= 0.6
+  }
   const isIncludesSinger = (singer) => fSinger ? (fSinger.includes(singer) || singer.includes(fSinger)) : true
   const isEqualsAlbum = (album) => fAlbumName ? fAlbumName == album : true
 
@@ -130,8 +150,8 @@ export const findMusic = async(musicInfo) => {
       item.name = trimStr(item.name)
       item.singer = trimStr(item.singer)
       item.fSinger = filterStr(sortSingle(item.singer).toLowerCase())
-      item.fMusicName = filterStr(String(item.name ?? '').toLowerCase())
-      item.fAlbumName = filterStr(String(item.albumName ?? '').toLowerCase())
+      item.fMusicName = norm(item.name)
+      item.fAlbumName = norm(item.albumName)
       item.fInterval = getIntv(item.interval)
       // console.log(fMusicName, item.fMusicName, item.source)
       if (!isEqualsInterval(item.fInterval)) {
